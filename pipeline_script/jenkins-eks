@@ -1,0 +1,46 @@
+pipeline {
+    agent any 
+
+       parameters {
+        string(name: 'AWS_REGION', defaultValue: 'us-east-1', description: 'enter the region')
+        string(name: 'CLUSTER_NAME', defaultValue: 'devops-project-cluster', description: 'enter the EKS cluster name')
+        string(name: 'AWS_ACCOUNT_ID', defaultValue: '484907494367', description: 'enter your accountid')
+        string(name: 'ECR_REPO_NAME', defaultValue: 'prime-video', description: 'enter your repo name')
+        string(name: 'VERSION', defaultValue: '1', description: 'enter the version')
+       } 
+
+       stages {
+         stage ('checkout the code') {
+            steps {
+               git branch: 'main', url: 'https://github.com/Anusuya-murugiah/prime-video-project.git'
+            }
+         }
+         stage ('login into EKS') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'),
+                                     string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
+                                        sh "aws eks --region ${params.AWS_REGION} update-kubeconfig --name ${params.CLUSTER_NAME}"
+                                     }
+                }
+            }
+         }
+         stage ('select the image version') {
+            steps {
+                script {
+                  def ECR_IMAGE_TAG = "${params.AWS_ACCOUNT_ID}.dkr.ecr.${params.AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:${params.VERSION}"
+                  sh """sed -i 's|image: .*|image: ${ECR_IMAGE_TAG}|' k8s_files/deployment.yaml"""
+                }
+            }
+         }
+         stage("Deploy to EKS") {
+            steps {
+                script {
+                        // Apply the deployment and service files
+                        sh "kubectl apply -f k8s_files/deployment.yaml"
+                        sh "kubectl apply -f k8s_files/service.yaml"
+                }
+            }
+        }
+      }   
+}
